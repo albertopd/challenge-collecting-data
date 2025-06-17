@@ -92,18 +92,17 @@ class Scraper:
         all_listing_urls = self.__load_urls_from_file(self.URLS_FILE)
 
         if len(all_listing_urls) == 0:
-            headers = self.get_headers()
             page = 0
             there_are_listings = True
 
-            while page < 1:#there_are_listings:
+            while len(all_listing_urls) < 36000 and there_are_listings:
                 page += 1
                 print(f">> Getting listings URLs from page {page}")
 
                 listings_page_url = self.LISTINGS_URL.format(page)
                 response = requests.get(
                     listings_page_url,
-                    headers = headers
+                    headers = self.get_headers()
                 )
                 response.raise_for_status()
 
