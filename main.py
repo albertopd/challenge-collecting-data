@@ -1,7 +1,7 @@
-from scraper import ImmowebScraper
+from scraper import Scraper
 
 try:
-    scraper = ImmowebScraper()
+    scraper = Scraper()
     scraper.scrape_data()
     scraper.save_data("immoweb_data.csv")
     

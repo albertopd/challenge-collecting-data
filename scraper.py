@@ -1,15 +1,22 @@
 import time
+import requests
+from requests.utils import dict_from_cookiejar
+from random import randint
 from urllib.parse import urljoin
+from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 
-class ImmowebScraper:
+from fake_headers import Headers
+import random
+
+class Scraper:
     # URLs file
     URLS_FILE = "urls.txt"
 
-    ZIMMO_URL = "https://www.zimmo.be"
-    LISTINGS_URL = "/fr/rechercher/?search=eyJmaWx0ZXIiOnsic3RhdHVzIjp7ImluIjpbIkZPUl9TQUxFIiwiVEFLRV9PVkVSIl19LCJjYXRlZ29yeSI6eyJpbiI6WyJIT1VTRSIsIkFQQVJUTUVOVCJdfX0sInBhZ2luZyI6eyJmcm9tIjowLCJzaXplIjoxN30sInNvcnRpbmciOlt7InR5cGUiOiJQT1NUQUxfQ09ERSIsIm9yZGVyIjoiQVNDIn1dfQ%3D%3D&p={}"
-    
+    # Immovlan listings URL
+    LISTINGS_URL = "https://immovlan.be/en/real-estate?transactiontypes=for-sale,in-public-sale&propertytypes=apartment,house&propertysubtypes=apartment,ground-floor,penthouse,studio,duplex,loft,triplex,residence,villa,mixed-building,master-house,bungalow,cottage,chalet,mansion&page=2&noindex=1"
+
     # Listing attribute names
     LISTING_LOCALITY = "Locality"
     LISTING_POSTAL_CODE = "Postal Code"
@@ -50,6 +57,23 @@ class ImmowebScraper:
 
     def save_data(self, filename: str) -> None:
         print(self.data)
+    
+    def get_headers(self) -> dict:
+        """
+        Generate randomized, realistic HTTP headers to reduce request blocking.
+        
+        The function selects random combinations of browser and OS
+        to generate diverse and legitimate-looking headers.
+        """
+        browsers = ["chrome", "firefox", "opera", "safari", "edge"]
+        os_choices = ["win", "mac", "linux"]
+
+        headers = Headers(
+            browser=random.choice(browsers),
+            os=random.choice(os_choices),
+            headers=True
+        )
+        return headers.generate()
 
     def __open_page_in_selenium(self, page_url: str):
         driver = webdriver.Chrome()
@@ -68,19 +92,34 @@ class ImmowebScraper:
         all_listing_urls = self.__load_urls_from_file(self.URLS_FILE)
 
         if len(all_listing_urls) == 0:
+            headers = self.get_headers()
             page = 0
             there_are_listings = True
 
-            while there_are_listings:
+            while page < 1:#there_are_listings:
                 page += 1
                 print(f">> Getting listings URLs from page {page}")
 
-                listings_page_url = urljoin(self.ZIMMO_URL, self.LISTINGS_URL.format(page))
-                listings_urls_per_page = self.__get_listings_urls_per_page(listings_page_url)
-                there_are_listings = len(listings_urls_per_page) > 0
+                listings_page_url = self.LISTINGS_URL.format(page)
+                response = requests.get(
+                    listings_page_url,
+                    headers = headers
+                )
+                response.raise_for_status()
 
-                print(f"Found {len(listings_urls_per_page)} listings")
-                all_listing_urls.extend(listings_urls_per_page) 
+                soup = BeautifulSoup(response.content, 'html.parser')
+                articles = soup.find_all("article")
+
+                found_urls_count = 0
+                for article in articles:
+                    if article.has_attr("data-url"):
+                        all_listing_urls.append(article["data-url"])
+                        found_urls_count += 1
+
+                print(f"Found {found_urls_count} listings")
+
+                # Add a delay to avoid blocking
+                time.sleep(randint(0, 1))
             
             if len(all_listing_urls) > 0:
                 self.__save_urls_to_file(all_listing_urls, self.URLS_FILE)
@@ -102,33 +141,6 @@ class ImmowebScraper:
             print(f"[ERROR] Failed to load URLs from file: {file_path} => {e}")
             return []
 
-    def __get_listings_urls_per_page(self, listings_page_url: str) -> list[str]:
-        listings_urls: list[str] = []
-
-        try:
-            driver = webdriver.Chrome()
-            driver.get(listings_page_url)
-
-            for _ in range(3):
-                links = driver.find_elements(By.CLASS_NAME, "property-item_link")
-                if len(links) > 0:
-                    break
-                time.sleep(1)
-
-            print(f"Number of listings found: {len(links)}")
-            
-            for link in links:
-                href = link.get_attribute("href")
-                if href:
-                    listings_urls.append(urljoin(self.ZIMMO_URL, href))
-        except Exception as e:
-            print(f"[ERROR] Failed to get listings from page: {listings_page_url} => {e}")
-        finally:
-            if driver:
-                driver.close()
-
-        return listings_urls
-    
     def __get_listing_data(self, listing_url: str) -> dict:
         try:
             print(f">>>> Scraping listing data from page => {listing_url}")
