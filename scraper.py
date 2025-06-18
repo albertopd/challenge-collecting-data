@@ -21,7 +21,7 @@ class Scraper:
     """
 
     # Immovlan listings URL
-    LISTINGS_URL = "https://immovlan.be/en/real-estate?transactiontypes=for-sale,in-public-sale&propertytypes=apartment,house&propertysubtypes=apartment,ground-floor,penthouse,studio,duplex,loft,triplex,residence,villa,mixed-building,master-house,bungalow,cottage,chalet,mansion&page=2&noindex=1"
+    LISTINGS_URL = "https://immovlan.be/en/real-estate?transactiontypes=for-sale,in-public-sale&propertytypes=apartment,house&propertysubtypes=apartment,ground-floor,penthouse,studio,duplex,loft,triplex,residence,villa,mixed-building,master-house,bungalow,cottage,chalet,mansion&page={}&noindex=1"
 
     # Listing fields
     FIELD_URL = "URL"
@@ -112,7 +112,7 @@ class Scraper:
         listing_urls = self.__get_listing_urls(urls_txt_file, max_urls)
 
         start_from = 0
-        if start_from_url:
+        if start_from_url != "":
             try:
                 print(f"Start parsing from URL: {start_from_url}")
                 start_from = listing_urls.index(start_from_url)
@@ -133,10 +133,9 @@ class Scraper:
             for listing_url in listing_urls[start_from:]: 
                 listing_data = self.__get_listing_data(listing_url.strip())
 
-                if listing_data:
+                if len(listing_data) > 0:
                     self.data.append(listing_data)
-                
-                writer.writerow(listing_data)
+                    writer.writerow(listing_data)
 
                 # Add a delay to avoid blocking
                 time.sleep(randint(0, 1))
@@ -173,7 +172,7 @@ class Scraper:
         # Try to load URLs from previus saved file
         listing_urls = self.__load_urls_from_file(urls_txt_file)
 
-        if listing_urls:
+        if len(listing_urls) == 0:
             page = 0
             there_are_listings = True
 
