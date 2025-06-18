@@ -1,34 +1,47 @@
 import time
 import requests
-from requests.utils import dict_from_cookiejar
+import csv
+import random
 from random import randint
 from urllib.parse import urljoin
 from bs4 import BeautifulSoup
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-
 from fake_headers import Headers
-import random
 
 class Scraper:
-    # URLs file
-    URLS_FILE = "urls.txt"
+    # File names
+    LISTINGS_URLS_FILE = "listings_urls.txt"
+    LISTINGS_DATA_FILE = "listings_data.csv"
 
     # Immovlan listings URL
     LISTINGS_URL = "https://immovlan.be/en/real-estate?transactiontypes=for-sale,in-public-sale&propertytypes=apartment,house&propertysubtypes=apartment,ground-floor,penthouse,studio,duplex,loft,triplex,residence,villa,mixed-building,master-house,bungalow,cottage,chalet,mansion&page=2&noindex=1"
 
-    # Listing attribute names
-    LISTING_LOCALITY = "Locality"
-    LISTING_POSTAL_CODE = "Postal Code"
-    LISTING_TYPE = "Type of property"
-    LISTING_PRICE: str = "Price"
-    LISTING_BEDROOMS = "Number of bedrooms"
-    LISTING_BATHROOMS = "Number of bathrooms"
-    LISTING_LIVING_AREA = "Living area"
-    LISTING_CONSTRUCTION_YEAR = "Construction year"
-    LISTING_NUMBER_FACADES = "Number of facades"
-    LISTING_EPB = "EPB (kWh/m²)"
-    LISTING_ENERGY_CLASS = "Energy class"
+    # Listing fields
+    FIELD_URL = "URL"
+    FIELD_LOCALITY = "Locality"
+    FIELD_POSTAL_CODE = "Postal Code"
+    FIELD_TYPE = "Type of property"
+    FIELD_PRICE: str = "Price"
+    FIELD_BEDROOMS = "Number of bedrooms"
+    FIELD_BATHROOMS = "Number of bathrooms"
+    FIELD_LIVING_AREA = "Living area"
+    FIELD_CONSTRUCTION_YEAR = "Construction year"
+    FIELD_FACADES = "Number of facades"
+    FIELD_EPB = "EPB"
+    FIELD_ENERGY_CLASS = "Energy class"
+    FIELD_NAMES = [
+        FIELD_LOCALITY,
+        FIELD_POSTAL_CODE,
+        FIELD_TYPE,
+        FIELD_PRICE,
+        FIELD_BEDROOMS, 
+        FIELD_BATHROOMS,
+        FIELD_LIVING_AREA,
+        FIELD_CONSTRUCTION_YEAR,
+        FIELD_FACADES,
+        FIELD_EPB,
+        FIELD_ENERGY_CLASS,
+        FIELD_URL
+    ]
 
     LISTING_FULL_KITCHEN = "Fully equipped kitchen" # 1/0
     LISTING_FURNISHED = "Furnished" # 1/0
@@ -47,18 +60,24 @@ class Scraper:
 
     def scrape_data(self) -> None:
         all_listing_urls = self.__get_all_listing_urls()
-        """
-        for listing_url in all_listing_urls:
-            listing_data = self.__get_listing_data(listing_url)
 
-            if listing_data:
-                self.data.append(listing_data)
-        """
+        with open(self.LISTINGS_DATA_FILE, 'w', newline='\n') as csvfile:
 
-    def save_data(self, filename: str) -> None:
-        print(self.data)
-    
-    def get_headers(self) -> dict:
+            writer = csv.DictWriter(csvfile, fieldnames = self.FIELD_NAMES)
+            writer.writeheader()
+
+            for listing_url in all_listing_urls[:3]: # TODO: Remove limit 
+                listing_data = self.__get_listing_data(listing_url.strip())
+
+                if listing_data:
+                    self.data.append(listing_data)
+                
+                writer.writerow(listing_data)
+
+                # Add a delay to avoid blocking
+                time.sleep(randint(0, 1))
+
+    def __get_headers(self) -> dict:
         """
         Generate randomized, realistic HTTP headers to reduce request blocking.
         
@@ -75,21 +94,9 @@ class Scraper:
         )
         return headers.generate()
 
-    def __open_page_in_selenium(self, page_url: str):
-        driver = webdriver.Chrome()
-        driver.get(page_url)
-        """
-        # Accept cookies
-        time.sleep(1) # Wait 1 sec for the cookie pop-up to show
-        cookie_button = driver.find_element(By.ID ,"didomi-notice-agree-button")
-        if cookie_button:
-            cookie_button.click()
-        """
-        return driver
-
     def __get_all_listing_urls(self) -> list[str]:
         # Try to load URLs from previous file
-        all_listing_urls = self.__load_urls_from_file(self.URLS_FILE)
+        all_listing_urls = self.__load_urls_from_file(self.LISTINGS_URLS_FILE)
 
         if len(all_listing_urls) == 0:
             page = 0
@@ -102,7 +109,7 @@ class Scraper:
                 listings_page_url = self.LISTINGS_URL.format(page)
                 response = requests.get(
                     listings_page_url,
-                    headers = self.get_headers()
+                    headers = self.__get_headers()
                 )
                 response.raise_for_status()
 
@@ -121,123 +128,135 @@ class Scraper:
                 time.sleep(randint(0, 1))
             
             if len(all_listing_urls) > 0:
-                self.__save_urls_to_file(all_listing_urls, self.URLS_FILE)
+                self.__save_urls_to_file(all_listing_urls, self.LISTINGS_URLS_FILE)
 
         return all_listing_urls
 
-    def __save_urls_to_file(self, urls: list[str], file_path: str) -> None:
+    def __save_urls_to_file(self, urls: list[str], filename: str) -> None:
         try:
-            with open(file_path, 'w') as urls_file:
+            with open(filename, 'w') as urls_file:
                 urls_file.writelines(url + '\n' for url in urls)
         except Exception as e:
-            print(f"[ERROR] Failed to save URLs to file: {file_path} => {e}")
+            print(f"[ERROR] Failed to save URLs to file: {filename} => {e}")
 
-    def __load_urls_from_file(self, file_path: str) -> list[str]:
+    def __load_urls_from_file(self, filename: str) -> list[str]:
         try:
-            with open(file_path, 'r') as urls_file:
+            with open(filename, 'r') as urls_file:
                 return urls_file.readlines()
         except Exception as e:
-            print(f"[ERROR] Failed to load URLs from file: {file_path} => {e}")
+            print(f"[ERROR] Failed to load URLs from file: {filename} => {e}")
             return []
 
     def __get_listing_data(self, listing_url: str) -> dict:
         try:
             print(f">>>> Scraping listing data from page => {listing_url}")
 
-            #driver = self.__open_page_in_selenium(listing_url)
-            driver = webdriver.Chrome()
-            driver.get(listing_url)
+            response = requests.get(
+                listing_url,
+                headers = self.__get_headers()
+            )
+            response.raise_for_status()
 
-            listing_data = self.__parse_main_features(driver)
-            listing_data.update(self.__parse_address(driver))
-            listing_data[self.LISTING_PRICE] = self.__parse_pricing(driver)
-            listing_data["URL"] = listing_url
+            soup = BeautifulSoup(response.content, 'html.parser')
+
+            listing_data = self.__parse_data_rows(soup)
+            listing_data.update(self.__parse_address(soup))
+            listing_data[self.FIELD_PRICE] = self.__parse_pricing(soup)
+            listing_data[self.FIELD_URL] = listing_url
 
             return listing_data     
         except Exception as e:
             print(f"[ERROR] Failed to parse listing data from page: {listing_url} => {e}")
             return {}
-        finally:
-            if driver:
-                driver.close()
 
-    def __parse_main_features(self, driver) -> dict:
+    def __parse_data_rows(self, soup) -> dict:
         listing_data = {}
 
         try:
-            main_features_ul = driver.find_element(By.CLASS_NAME, "main-features")
-            items = main_features_ul.find_elements(By.TAG_NAME, "li")
+            data_rows = soup.find_all(class_ = "data-row-wrapper")
 
-            for item in items:
-                feature_label = item.find_element(By.CLASS_NAME, "feature-label").text.strip()
-                feature_value = item.find_element(By.CLASS_NAME, "feature-value").text.strip()
-                match feature_label:
-                    case "Type":
-                        listing_data[self.LISTING_TYPE] = feature_value
-                    case "Surf. habitable":
-                        try:
-                            listing_data[self.LISTING_LIVING_AREA] = int(feature_value.replace(" m²", ""))
-                        except Exception as ie:
-                            listing_data[self.LISTING_LIVING_AREA] = None
-                            print(f"[ERROR] Failed to parse living area => {ie}")
-                    case "Chambres":
-                        try:
-                            listing_data[self.LISTING_BEDROOMS] = int(feature_value)
-                        except Exception as ie:
-                            listing_data[self.LISTING_BEDROOMS] = None
-                            print(f"[ERROR] Failed to parse number of bedrooms => {ie}")
-                    case "Salles de bain":
-                        try:
-                            listing_data[self.LISTING_BATHROOMS] = int(feature_value)
-                        except Exception as ie:
-                            listing_data[self.LISTING_BATHROOMS] = None
-                            print(f"[ERROR] Failed to parse number of bathrooms => {ie}")
-                    case "Construit en":
-                        try:
-                            listing_data[self.LISTING_CONSTRUCTION_YEAR] = int(feature_value)
-                        except Exception as ie:
-                            listing_data[self.LISTING_CONSTRUCTION_YEAR] = None
-                            print(f"[ERROR] Failed to parse construction year => {ie}")
-                    case "Construction":
-                        try:
-                            listing_data[self.LISTING_NUMBER_FACADES] = int(feature_value.replace("-façades", ""))
-                        except Exception as ie:
-                            listing_data[self.LISTING_NUMBER_FACADES] = None
-                            print(f"[ERROR] Failed to parse number of facades => {ie}")
-                    case "PEB":
-                        try:
-                            listing_data[self.LISTING_EPB] = int(feature_value.replace(" kWh/m²", ""))
-                            listing_data[self.LISTING_ENERGY_CLASS] = self.__get_epb_class(listing_data[self.LISTING_EPB])
-                        except Exception as ie:
-                            listing_data[self.LISTING_EPB] = None
-                            print(f"[ERROR] Failed to parse EPB => {ie}")   
+            for data_row in data_rows:
+                data_divs = data_row.find_all("div")
+
+                for data_div in data_divs:
+                    data_label = data_div.find("h4")
+                    if not data_label:
+                        continue
+
+                    data_value = data_div.find("p")
+                    if not data_value:
+                        continue
+
+                    data_label_text = data_label.text.strip()
+                    data_value_text = data_value.text.strip()
+
+                    match data_label_text:
+                        case "Type":
+                            listing_data[self.FIELD_TYPE] = data_value_text
+                        case "Livable surface":
+                            try:
+                                listing_data[self.FIELD_LIVING_AREA] = int(data_value_text.split(' ')[0])
+                            except Exception as ie:
+                                listing_data[self.FIELD_LIVING_AREA] = None
+                                print(f"[ERROR] Failed to parse living area => {ie}")
+                        case "Number of bedrooms":
+                            try:
+                                listing_data[self.FIELD_BEDROOMS] = int(data_value_text)
+                            except Exception as ie:
+                                listing_data[self.FIELD_BEDROOMS] = None
+                                print(f"[ERROR] Failed to parse number of bedrooms => {ie}")
+                        case "Number of bathrooms":
+                            try:
+                                listing_data[self.FIELD_BATHROOMS] = int(data_value_text)
+                            except Exception as ie:
+                                listing_data[self.FIELD_BATHROOMS] = None
+                                print(f"[ERROR] Failed to parse number of bathrooms => {ie}")
+                        case "Build Year":
+                            try:
+                                listing_data[self.FIELD_CONSTRUCTION_YEAR] = int(data_value_text)
+                            except Exception as ie:
+                                listing_data[self.FIELD_CONSTRUCTION_YEAR] = None
+                                print(f"[ERROR] Failed to parse construction year => {ie}")
+                        case "Number of facades":
+                            try:
+                                listing_data[self.FIELD_FACADES] = int(data_value_text)
+                            except Exception as ie:
+                                listing_data[self.FIELD_FACADES] = None
+                                print(f"[ERROR] Failed to parse number of facades => {ie}")
+                        case "Specific primary energy consumption":
+                            try:
+                                listing_data[self.FIELD_EPB] = int(data_value_text.split(' ')[0])
+                                listing_data[self.FIELD_ENERGY_CLASS] = self.__get_epb_class(listing_data[self.FIELD_EPB])
+                            except Exception as ie:
+                                listing_data[self.FIELD_EPB] = None
+                                print(f"[ERROR] Failed to parse EPB => {ie}")   
                         
         except Exception as e:
             print(f"[ERROR] Failed to parse main features => {e}")
 
         return listing_data
     
-    def __parse_address(self, driver) -> dict:
+    def __parse_address(self, soup) -> dict:
         try:
-            try:
-                address_element = driver.find_element(By.CLASS_NAME, "__full-address")
-            except:
-                address_element = driver.find_element(By.CLASS_NAME, "address-not-fully-available")
+            city_line = soup.find(class_ = "city-line")
 
-            address_parts = address_element.text.strip().split(',')[-1].strip().split(' ')
+            if city_line:
+                parts = city_line.text.strip().split(' ')
 
-            return {
-                self.LISTING_POSTAL_CODE: int(address_parts[0]),
-                self.LISTING_LOCALITY: address_parts[1]
-            }
+                return {
+                    self.FIELD_POSTAL_CODE: int(parts[0]),
+                    self.FIELD_LOCALITY: parts[1]
+                }
+            else:
+                return {}
         except Exception as e:
             print(f"[ERROR] Failed to parse address => {e}")
             return {}
 
-    def __parse_pricing(self, driver) -> float | None:
+    def __parse_pricing(self, soup) -> float | None:
         try:
-            price_tag = driver.find_element(By.CLASS_NAME, "price-value")
-            price_text = price_tag.text.strip().replace("€ ", "").replace('.', "")
+            price_tag = soup.find(class_ = "detail__header_price_data")
+            price_text = price_tag.text.strip().replace(" €", "").replace("\u202f", "")
             return int(price_text)
         except Exception as e:
             print(f"[ERROR] Failed to parse pricing => {e}")

@@ -192,4 +192,5 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
-urls.txt
+listings_urls.txt
+listings_data.csv
