@@ -3,27 +3,27 @@ import requests
 import csv
 import random
 from random import randint
+from pathlib import Path
 from bs4 import BeautifulSoup
 from fake_headers import Headers
 
 class Scraper:
-    # File names
-    LISTINGS_URLS_FILE = "listings_urls.txt"
-    LISTINGS_DATA_FILE = "listings_data.csv"
-
     # Immovlan listings URL
     LISTINGS_URL = "https://immovlan.be/en/real-estate?transactiontypes=for-sale,in-public-sale&propertytypes=apartment,house&propertysubtypes=apartment,ground-floor,penthouse,studio,duplex,loft,triplex,residence,villa,mixed-building,master-house,bungalow,cottage,chalet,mansion&page=2&noindex=1"
 
     # Listing fields
     FIELD_URL = "URL"
     FIELD_TYPE = "Type of property"
+    FIELD_STATE = "State of the property"
     FIELD_LOCALITY = "Locality"
     FIELD_POSTAL_CODE = "Postal Code"
     FIELD_PRICE: str = "Price"
     FIELD_BEDROOMS = "Number of bedrooms"
     FIELD_BATHROOMS = "Number of bathrooms"
+    FIELD_TOILETS = "Number of toilets"
     FIELD_LIVING_AREA = "Living area"
     FIELD_CONSTRUCTION_YEAR = "Construction year"
+    FIELD_FURNISHED = "Furnished"
     FIELD_FACADES = "Number of facades"
     FIELD_EPB = "EPB"
     FIELD_ENERGY_CLASS = "Energy class"
@@ -43,15 +43,19 @@ class Scraper:
     FIELD_AC = "Air conditioning"
     FIELD_ALARM = "Alarm"
     FIELD_ACCESS_DISABLED = "Access for disabled"
+    FIELD_HEATING_TYPE = "Type of heating"
     FIELD_NAMES = [
         FIELD_TYPE,
+        FIELD_STATE,
         FIELD_LOCALITY,
         FIELD_POSTAL_CODE,
         FIELD_PRICE,
         FIELD_BEDROOMS, 
         FIELD_BATHROOMS,
+        FIELD_TOILETS,
         FIELD_LIVING_AREA,
         FIELD_CONSTRUCTION_YEAR,
+        FIELD_FURNISHED,
         FIELD_FACADES,
         FIELD_EPB,
         FIELD_ENERGY_CLASS,
@@ -71,27 +75,36 @@ class Scraper:
         FIELD_AC,
         FIELD_ALARM,
         FIELD_ACCESS_DISABLED,
+        FIELD_HEATING_TYPE,
         FIELD_URL
     ]
-
-    FIELD_FURNISHED = "Furnished"
-    FIELD_OPEN_FIRE = "Open fire"
-    FIELD_SURFACE_LAND = "Surface of the land"
-    FIELD_SURFACE_PLOT_LAND =  "Surface area of the plot of land"
-    FIELD_STATE = "State of the building" # New, to be renovated, ...
 
     def __init__(self) -> None:
         self.data: list[dict] = []
 
-    def scrape_data(self) -> None:
-        all_listing_urls = self.__get_all_listing_urls()
+    def scrape_data(self, output_csv_file: str, urls_txt_file: str, max_urls: int, start_from_url: str = "") -> None:
+        listing_urls = self.__get_listing_urls(urls_txt_file, max_urls)
 
-        with open(self.LISTINGS_DATA_FILE, 'w', newline='\n') as csvfile:
+        start_from = 0
+        if start_from_url:
+            try:
+                print(f"Start parsing from URL: {start_from_url}")
+                start_from = listing_urls.index(start_from_url)
+            except ValueError as ve:
+                print(ve)   
+
+        # If we are starting from a specific URL, then we will append to the existing file
+        mode = 'w' if start_from == 0 else 'a'
+
+        with open(output_csv_file, mode, newline='\n') as csvfile:
 
             writer = csv.DictWriter(csvfile, fieldnames = self.FIELD_NAMES)
-            writer.writeheader()
 
-            for listing_url in all_listing_urls[:3]: # TODO: Remove limit 
+            # Only write the header if we are not starting from an specific URL
+            if start_from == 0:
+                writer.writeheader()
+
+            for listing_url in listing_urls[start_from:]: 
                 listing_data = self.__get_listing_data(listing_url.strip())
 
                 if listing_data:
@@ -119,15 +132,15 @@ class Scraper:
         )
         return headers.generate()
 
-    def __get_all_listing_urls(self) -> list[str]:
-        # Try to load URLs from previous file
-        all_listing_urls = self.__load_urls_from_file(self.LISTINGS_URLS_FILE)
+    def __get_listing_urls(self, urls_txt_file: str, max_urls) -> list[str]:
+        # Try to load URLs from previus saved file
+        listing_urls = self.__load_urls_from_file(urls_txt_file)
 
-        if len(all_listing_urls) == 0:
+        if not listing_urls:
             page = 0
             there_are_listings = True
 
-            while len(all_listing_urls) < 36000 and there_are_listings:
+            while len(listing_urls) < max_urls and there_are_listings:
                 page += 1
                 print(f">> Getting listings URLs from page {page}")
 
@@ -144,7 +157,7 @@ class Scraper:
                 found_urls_count = 0
                 for article in articles:
                     if article.has_attr("data-url"):
-                        all_listing_urls.append(article["data-url"])
+                        listing_urls.append(article["data-url"])
                         found_urls_count += 1
 
                 print(f"Found {found_urls_count} listings")
@@ -152,10 +165,10 @@ class Scraper:
                 # Add a delay to avoid blocking
                 time.sleep(randint(0, 1))
             
-            if len(all_listing_urls) > 0:
-                self.__save_urls_to_file(all_listing_urls, self.LISTINGS_URLS_FILE)
+            if listing_urls:
+                self.__save_urls_to_file(listing_urls, urls_txt_file)
 
-        return all_listing_urls
+        return listing_urls
 
     def __save_urls_to_file(self, urls: list[str], filename: str) -> None:
         try:
@@ -166,11 +179,12 @@ class Scraper:
 
     def __load_urls_from_file(self, filename: str) -> list[str]:
         try:
-            with open(filename, 'r') as urls_file:
-                return urls_file.readlines()
+            if Path(filename).exists():
+                with open(filename, 'r') as urls_file:
+                    return [line.rstrip() for line in urls_file]
         except Exception as e:
             print(f"[ERROR] Failed to load URLs from file: {filename} => {e}")
-            return []
+        return []
 
     def __get_listing_data(self, listing_url: str) -> dict:
         listing_data: dict = {}
@@ -236,6 +250,8 @@ class Scraper:
                     data_value_text = data_value.text.strip()
 
                     match data_label_text:
+                        case "State of the property":
+                            listing_data[self.FIELD_STATE] = data_value_text
                         case "Livable surface":
                             try:
                                 listing_data[self.FIELD_LIVING_AREA] = int(data_value_text.split(' ')[0])
@@ -254,12 +270,24 @@ class Scraper:
                             except Exception as ie:
                                 listing_data[self.FIELD_BATHROOMS] = None
                                 print(f"[ERROR] Failed to parse: {self.FIELD_BATHROOMS} => {ie}")
+                        case "Number of toilets":
+                            try:
+                                listing_data[self.FIELD_TOILETS] = int(data_value_text)
+                            except Exception as ie:
+                                listing_data[self.FIELD_TOILETS] = None
+                                print(f"[ERROR] Failed to parse: {self.FIELD_TOILETS} => {ie}")
                         case "Build Year":
                             try:
                                 listing_data[self.FIELD_CONSTRUCTION_YEAR] = int(data_value_text)
                             except Exception as ie:
                                 listing_data[self.FIELD_CONSTRUCTION_YEAR] = None
                                 print(f"[ERROR] Failed to parse: {self.FIELD_CONSTRUCTION_YEAR} => {ie}")
+                        case "Furnished":
+                            try:
+                                listing_data[self.FIELD_FURNISHED] = int(data_value_text == "Yes")
+                            except Exception as ie:
+                                listing_data[self.FIELD_FURNISHED] = None
+                                print(f"[ERROR] Failed to parse: {self.FIELD_FURNISHED} => {ie}") 
                         case "Number of facades":
                             try:
                                 listing_data[self.FIELD_FACADES] = int(data_value_text)
@@ -369,7 +397,9 @@ class Scraper:
                             except Exception as ie:
                                 listing_data[self.FIELD_ACCESS_DISABLED] = None
                                 print(f"[ERROR] Failed to parse: {self.FIELD_ACCESS_DISABLED} => {ie}")
-        
+                        case "Type of heating":
+                            listing_data[self.FIELD_HEATING_TYPE] = data_value_text if data_value_text != "Not specified" else None
+
                         
         except Exception as e:
             print(f"[ERROR] Failed to parse data rows => {e}")
