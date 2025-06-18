@@ -8,6 +8,17 @@ from bs4 import BeautifulSoup
 from fake_headers import Headers
 
 class Scraper:
+    """
+    A web scraper for extracting real estate listings from Immovlan.
+
+    This scraper retrieves property listings, parses relevant attributes such as
+    price, surface area, number of rooms, and EPB classification, and saves the
+    data into a CSV file. It also supports resuming from a specific URL.
+
+    Attributes:
+        data (list[dict]): A list of dictionaries containing parsed listing data.
+    """
+
     # Immovlan listings URL
     LISTINGS_URL = "https://immovlan.be/en/real-estate?transactiontypes=for-sale,in-public-sale&propertytypes=apartment,house&propertysubtypes=apartment,ground-floor,penthouse,studio,duplex,loft,triplex,residence,villa,mixed-building,master-house,bungalow,cottage,chalet,mansion&page=2&noindex=1"
 
@@ -80,9 +91,21 @@ class Scraper:
     ]
 
     def __init__(self) -> None:
+        """
+        Initialize the Scraper instance with an empty data list.
+        """
         self.data: list[dict] = []
 
     def scrape_data(self, output_csv_file: str, urls_txt_file: str, max_urls: int, start_from_url: str = "") -> None:
+        """
+        Main scraping function to collect real estate data and write it to a CSV file.
+
+        Args:
+            output_csv_file (str): Path to the CSV file to write scraped data.
+            urls_txt_file (str): File to store/retrieve listing URLs for efficiency.
+            max_urls (int): Maximum number of listing URLs to scrape.
+            start_from_url (str, optional): URL from which to resume scraping. Defaults to "".
+        """
         listing_urls = self.__get_listing_urls(urls_txt_file, max_urls)
 
         start_from = 0
@@ -133,6 +156,17 @@ class Scraper:
         return headers.generate()
 
     def __get_listing_urls(self, urls_txt_file: str, max_urls) -> list[str]:
+        """
+        Retrieve or generate a list of property listing URLs.
+
+        Args:
+            urls_txt_file (str): Path to a text file to cache listing URLs.
+            max_urls (int): Maximum number of URLs to retrieve.
+
+        Returns:
+            list[str]: A list of listing URLs.
+        """
+
         # Try to load URLs from previus saved file
         listing_urls = self.__load_urls_from_file(urls_txt_file)
 
@@ -171,6 +205,13 @@ class Scraper:
         return listing_urls
 
     def __save_urls_to_file(self, urls: list[str], filename: str) -> None:
+        """
+        Save listing URLs to a file.
+
+        Args:
+            urls (list[str]): List of URLs to save.
+            filename (str): File path where URLs will be written.
+        """
         try:
             with open(filename, 'w') as urls_file:
                 urls_file.writelines(url + '\n' for url in urls)
@@ -178,6 +219,15 @@ class Scraper:
             print(f"[ERROR] Failed to save URLs to file: {filename} => {e}")
 
     def __load_urls_from_file(self, filename: str) -> list[str]:
+        """
+        Load listing URLs from a text file if it exists.
+
+        Args:
+            filename (str): Path to the file containing saved URLs.
+
+        Returns:
+            list[str]: List of URLs loaded from file.
+        """
         try:
             if Path(filename).exists():
                 with open(filename, 'r') as urls_file:
@@ -187,6 +237,15 @@ class Scraper:
         return []
 
     def __get_listing_data(self, listing_url: str) -> dict:
+        """
+        Scrape and parse data for a single property listing.
+
+        Args:
+            listing_url (str): URL of the property listing.
+
+        Returns:
+            dict: Parsed data fields for the listing.
+        """
         listing_data: dict = {}
 
         try:
@@ -217,6 +276,15 @@ class Scraper:
         return listing_data
 
     def __parse_listing_type(self, soup) -> str:
+        """
+        Extract the property type from the listing HTML.
+
+        Args:
+            soup (BeautifulSoup): Parsed HTML of the listing page.
+
+        Returns:
+            str: Property type or empty string if not found.
+        """
         try:
             title = soup.find(class_ = "detail__header_title_main")
 
@@ -229,6 +297,15 @@ class Scraper:
         return ""
     
     def __parse_data_rows(self, soup) -> dict:
+        """
+        Parse the core property details from the listing.
+
+        Args:
+            soup (BeautifulSoup): Parsed HTML of the listing page.
+
+        Returns:
+            dict: Dictionary of property features and values.
+        """
         listing_data = {}
 
         try:
@@ -407,6 +484,15 @@ class Scraper:
         return listing_data
         
     def __parse_address(self, soup) -> dict:
+        """
+        Parse the postal code and locality from the listing.
+
+        Args:
+            soup (BeautifulSoup): Parsed HTML of the listing page.
+
+        Returns:
+            dict: Dictionary with postal code and locality.
+        """
         try:
             city_line = soup.find(class_ = "city-line")
 
@@ -423,7 +509,16 @@ class Scraper:
             print(f"[ERROR] Failed to parse: {self.FIELD_POSTAL_CODE}, {self.FIELD_LOCALITY} => {e}")
             return {}
 
-    def __parse_pricing(self, soup) -> float | None:
+    def __parse_pricing(self, soup) -> int | None:
+        """
+        Extract the property price from the listing.
+
+        Args:
+            soup (BeautifulSoup): Parsed HTML of the listing page.
+
+        Returns:
+            int | None: Price of the listing, or None if not found.
+        """
         try:
             price_tag = soup.find(class_ = "detail__header_price_data")
             price_text = price_tag.text.strip().replace(" €", "").replace("\u202f", "")
@@ -434,9 +529,13 @@ class Scraper:
         
     def __get_epb_class(self, epb: int) -> str:
         """
-        Returns the EPB class based on the Brussels-Capital Region thresholds.
-        :param epb: Primary energy value in kWh PE/m²·year (integer)
-        :return: EPB class as a string
+        Returns the EPB (Energy Performance of Buildings) class based on thresholds used in Brussels.
+
+        Args:
+            epb (int): The EPB value in kWh/m²·year.
+
+        Returns:
+            str: EPB class (e.g., 'A', 'B-', 'G').
         """
         thresholds = [
             (epb < 0, "A++"),
