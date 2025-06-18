@@ -65,10 +65,6 @@ Generates randomized HTTP headers for anti-bot protection.
 
 Retrieves listing URLs from file or online source.
 
-#### `__save_urls_to_file(urls, filename)`
-
-Saves retrieved URLs for future reuse.
-
 #### `__load_urls_from_file(filename)`
 
 Loads cached URLs if available.
