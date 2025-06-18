@@ -1,5 +1,6 @@
 import time
 import requests
+import re
 import csv
 import random
 from random import randint
@@ -31,11 +32,11 @@ class Scraper:
     FIELD_PRICE: str = "Price"
     FIELD_BEDROOMS = "Number of bedrooms"
     FIELD_BATHROOMS = "Number of bathrooms"
-    FIELD_TOILETS = "Number of toilets"
     FIELD_LIVING_AREA = "Living area"
     FIELD_CONSTRUCTION_YEAR = "Construction year"
     FIELD_FURNISHED = "Furnished"
     FIELD_FACADES = "Number of facades"
+    FIELD_FLOORS = "Number of floors"
     FIELD_EPB = "EPB"
     FIELD_ENERGY_CLASS = "Energy class"
     FIELD_FULL_KITCHEN = "Fully equipped kitchen"
@@ -49,7 +50,7 @@ class Scraper:
     FIELD_BALCONY = "Balcony"
     FIELD_CELLAR = "Cellar"
     FIELD_ATTIC = "Attic"
-    FIELD_FLOOR_NUMBER = "Floor number"
+    FIELD_FLOOR_NUMBER = "Floor of apartment"
     FIELD_ELEVATOR = "Elevator"
     FIELD_AC = "Air conditioning"
     FIELD_ALARM = "Alarm"
@@ -63,11 +64,11 @@ class Scraper:
         FIELD_PRICE,
         FIELD_BEDROOMS, 
         FIELD_BATHROOMS,
-        FIELD_TOILETS,
         FIELD_LIVING_AREA,
         FIELD_CONSTRUCTION_YEAR,
         FIELD_FURNISHED,
         FIELD_FACADES,
+        FIELD_FLOORS,
         FIELD_EPB,
         FIELD_ENERGY_CLASS,
         FIELD_FULL_KITCHEN,
@@ -89,6 +90,8 @@ class Scraper:
         FIELD_HEATING_TYPE,
         FIELD_URL
     ]
+
+    REGEX_REMOVE_NON_NUMERIC = re.compile(r'[^0-9]')
 
     def __init__(self) -> None:
         """
@@ -155,7 +158,7 @@ class Scraper:
         )
         return headers.generate()
 
-    def __get_listing_urls(self, urls_txt_file: str, max_urls) -> list[str]:
+    def __get_listing_urls(self, urls_txt_file: str, max_urls: int) -> list[str]:
         """
         Retrieve or generate a list of property listing URLs.
 
@@ -170,7 +173,7 @@ class Scraper:
         # Try to load URLs from previus saved file
         listing_urls = self.__load_urls_from_file(urls_txt_file)
 
-        if not listing_urls:
+        if listing_urls:
             page = 0
             there_are_listings = True
 
@@ -202,7 +205,7 @@ class Scraper:
             if listing_urls:
                 self.__save_urls_to_file(listing_urls, urls_txt_file)
 
-        return listing_urls
+        return listing_urls[:max_urls]
 
     def __save_urls_to_file(self, urls: list[str], filename: str) -> None:
         """
@@ -311,6 +314,11 @@ class Scraper:
         try:
             data_rows = soup.find_all(class_ = "data-row-wrapper")
 
+            # We will try to parse all 3 of these and then pick the maximum
+            bathrooms = 0
+            toilets = 0
+            showers = 0
+
             for data_row in data_rows:
                 data_divs = data_row.find_all("div")
 
@@ -331,31 +339,34 @@ class Scraper:
                             listing_data[self.FIELD_STATE] = data_value_text
                         case "Livable surface":
                             try:
-                                listing_data[self.FIELD_LIVING_AREA] = int(data_value_text.split(' ')[0])
+                                listing_data[self.FIELD_LIVING_AREA] = int(self.REGEX_REMOVE_NON_NUMERIC.sub('', data_value_text))
                             except Exception as ie:
                                 listing_data[self.FIELD_LIVING_AREA] = None
                                 print(f"[ERROR] Failed to parse: {self.FIELD_LIVING_AREA} => {ie}")
                         case "Number of bedrooms":
                             try:
-                                listing_data[self.FIELD_BEDROOMS] = int(data_value_text)
+                                listing_data[self.FIELD_BEDROOMS] = int(self.REGEX_REMOVE_NON_NUMERIC.sub('', data_value_text))
                             except Exception as ie:
                                 listing_data[self.FIELD_BEDROOMS] = None
                                 print(f"[ERROR] Failed to parse: {self.FIELD_BEDROOMS} => {ie}")
                         case "Number of bathrooms":
                             try:
-                                listing_data[self.FIELD_BATHROOMS] = int(data_value_text)
+                                bathrooms = int(self.REGEX_REMOVE_NON_NUMERIC.sub('', data_value_text))
                             except Exception as ie:
-                                listing_data[self.FIELD_BATHROOMS] = None
                                 print(f"[ERROR] Failed to parse: {self.FIELD_BATHROOMS} => {ie}")
                         case "Number of toilets":
                             try:
-                                listing_data[self.FIELD_TOILETS] = int(data_value_text)
+                                toilets = int(self.REGEX_REMOVE_NON_NUMERIC.sub('', data_value_text))
                             except Exception as ie:
-                                listing_data[self.FIELD_TOILETS] = None
-                                print(f"[ERROR] Failed to parse: {self.FIELD_TOILETS} => {ie}")
+                                print(f"[ERROR] Failed to parse: Number of toilets => {ie}")
+                        case "Number of showers":
+                            try:
+                                showers = int(self.REGEX_REMOVE_NON_NUMERIC.sub('', data_value_text))
+                            except Exception as ie:
+                                print(f"[ERROR] Failed to parse: Number of showers => {ie}")
                         case "Build Year":
                             try:
-                                listing_data[self.FIELD_CONSTRUCTION_YEAR] = int(data_value_text)
+                                listing_data[self.FIELD_CONSTRUCTION_YEAR] = int(self.REGEX_REMOVE_NON_NUMERIC.sub('', data_value_text))
                             except Exception as ie:
                                 listing_data[self.FIELD_CONSTRUCTION_YEAR] = None
                                 print(f"[ERROR] Failed to parse: {self.FIELD_CONSTRUCTION_YEAR} => {ie}")
@@ -367,13 +378,19 @@ class Scraper:
                                 print(f"[ERROR] Failed to parse: {self.FIELD_FURNISHED} => {ie}") 
                         case "Number of facades":
                             try:
-                                listing_data[self.FIELD_FACADES] = int(data_value_text)
+                                listing_data[self.FIELD_FACADES] = int(self.REGEX_REMOVE_NON_NUMERIC.sub('', data_value_text))
                             except Exception as ie:
                                 listing_data[self.FIELD_FACADES] = None
                                 print(f"[ERROR] Failed to parse: {self.FIELD_FACADES} => {ie}")
+                        case "Number of floors":
+                            try:
+                                listing_data[self.FIELD_FLOORS] = int(self.REGEX_REMOVE_NON_NUMERIC.sub('', data_value_text))
+                            except Exception as ie:
+                                listing_data[self.FIELD_FLOORS] = None
+                                print(f"[ERROR] Failed to parse: {self.FIELD_FLOORS} => {ie}")
                         case "Specific primary energy consumption":
                             try:
-                                listing_data[self.FIELD_EPB] = int(data_value_text.split(' ')[0])
+                                listing_data[self.FIELD_EPB] = int(self.REGEX_REMOVE_NON_NUMERIC.sub('', data_value_text))
                                 listing_data[self.FIELD_ENERGY_CLASS] = self.__get_epb_class(listing_data[self.FIELD_EPB])
                             except Exception as ie:
                                 listing_data[self.FIELD_EPB] = None
@@ -392,7 +409,7 @@ class Scraper:
                                 print(f"[ERROR] Failed to parse: {self.FIELD_TERRACE} => {ie}")
                         case "Surface terrace":
                             try:
-                                listing_data[self.FIELD_TERRACE_AREA] = int(data_value_text.split(' ')[0])
+                                listing_data[self.FIELD_TERRACE_AREA] = int(self.REGEX_REMOVE_NON_NUMERIC.sub('', data_value_text))
                             except Exception as ie:
                                 listing_data[self.FIELD_TERRACE_AREA] = None
                                 print(f"[ERROR] Failed to parse: {self.FIELD_TERRACE_AREA} => {ie}")
@@ -404,7 +421,7 @@ class Scraper:
                                 print(f"[ERROR] Failed to parse: {self.FIELD_GARDEN} => {ie}")
                         case "Surface garden":
                             try:
-                                listing_data[self.FIELD_GARDEN_AREA] = int(data_value_text.split(' ')[0])
+                                listing_data[self.FIELD_GARDEN_AREA] = int(self.REGEX_REMOVE_NON_NUMERIC.sub('', data_value_text))
                             except Exception as ie:
                                 listing_data[self.FIELD_GARDEN_AREA] = None
                                 print(f"[ERROR] Failed to parse: {self.FIELD_GARDEN_AREA} => {ie}")
@@ -446,7 +463,7 @@ class Scraper:
                                 print(f"[ERROR] Failed to parse: {self.FIELD_ATTIC} => {ie}")
                         case "Floor of appartment":
                             try:
-                                listing_data[self.FIELD_FLOOR_NUMBER] = int(data_value_text == "Yes")
+                                listing_data[self.FIELD_FLOOR_NUMBER] = int(self.REGEX_REMOVE_NON_NUMERIC.sub('', data_value_text))
                             except Exception as ie:
                                 listing_data[self.FIELD_FLOOR_NUMBER] = None
                                 print(f"[ERROR] Failed to parse: {self.FIELD_FLOOR_NUMBER} => {ie}")
@@ -477,7 +494,9 @@ class Scraper:
                         case "Type of heating":
                             listing_data[self.FIELD_HEATING_TYPE] = data_value_text if data_value_text != "Not specified" else None
 
-                        
+            # Estimate the bathrooms field
+            listing_data[self.FIELD_BATHROOMS] = max(bathrooms, toilets, showers)
+
         except Exception as e:
             print(f"[ERROR] Failed to parse data rows => {e}")
 
@@ -521,7 +540,7 @@ class Scraper:
         """
         try:
             price_tag = soup.find(class_ = "detail__header_price_data")
-            price_text = price_tag.text.strip().replace(" €", "").replace("\u202f", "")
+            price_text = self.REGEX_REMOVE_NON_NUMERIC.sub('', price_tag.text)
             return int(price_text)
         except Exception as e:
             print(f"[ERROR] Failed to parse: {self.FIELD_PRICE} => {e}")
