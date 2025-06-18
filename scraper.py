@@ -21,7 +21,8 @@ class Scraper:
     """
 
     # Immovlan listings URL
-    LISTINGS_URL = "https://immovlan.be/en/real-estate?transactiontypes=for-sale,in-public-sale&propertytypes=apartment,house&propertysubtypes=apartment,ground-floor,penthouse,studio,duplex,loft,triplex,residence,villa,mixed-building,master-house,bungalow,cottage,chalet,mansion&page={}&noindex=1"
+    LISTINGS_URL = "https://immovlan.be/en/real-estate?transactiontypes=for-sale&propertytypes=house,apartment&sortdirection=ascending&sortby=zipcode&page={}"
+    URLS_PER_PAGE = 20    
 
     # Listing fields
     FIELD_URL = "URL"
@@ -173,14 +174,13 @@ class Scraper:
         listing_urls = self.__load_urls_from_file(urls_txt_file)
 
         if len(listing_urls) == 0:
-            page = 0
-            there_are_listings = True
+            seen = set()
+            pages = max_urls // self.URLS_PER_PAGE
 
-            while len(listing_urls) < max_urls and there_are_listings:
-                page += 1
-                print(f">> Getting listings URLs from page {page}")
+            for page in range(pages):
+                listings_page_url = self.LISTINGS_URL.format(page + 1)
+                print(f">> Getting listings URLs from page # {page + 1} => {listings_page_url}")
 
-                listings_page_url = self.LISTINGS_URL.format(page)
                 response = requests.get(
                     listings_page_url,
                     headers = self.__get_headers()
@@ -190,13 +190,19 @@ class Scraper:
                 soup = BeautifulSoup(response.content, 'html.parser')
                 articles = soup.find_all("article")
 
-                found_urls_count = 0
+                unique_urls_count = 0
+
                 for article in articles:
                     if article.has_attr("data-url"):
-                        listing_urls.append(article["data-url"])
-                        found_urls_count += 1
+                        url = article["data-url"]
+                        if url not in seen:
+                            seen.add(url)
+                            listing_urls.append(url)
+                            unique_urls_count += 1
 
-                print(f"Found {found_urls_count} listings")
+                print(f"Found {unique_urls_count} unique URLs")
+                if unique_urls_count == 0:
+                    break
 
                 # Add a delay to avoid blocking
                 time.sleep(randint(0, 1))
