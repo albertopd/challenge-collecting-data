@@ -35,15 +35,15 @@ Or from another script using:
 from scraper import Scraper
 
 scraper = Scraper()
-scraper.scrape_data("output.csv", "urls.txt", max_urls=100, start_from_url="")
+scraper.scrape_data("listings_data.csv", "listings_urls.txt", 36000)
 ```
 
 ---
 
 ## 📂 Output
 
-- **CSV File** (`output.csv`): Contains listings with fields like type, price, surface, location, energy rating, etc.
-- **URL Cache** (`urls.txt`): A list of previously collected listing URLs.
+- **CSV File** (`listings_data.csv`): Contains listings with fields like type, price, surface, location, energy rating, etc.
+- **URL Cache** (`listings_urls.txt`): A list of previously collected listing URLs.
 
 ---
 
