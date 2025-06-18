@@ -21,7 +21,7 @@ class Scraper:
     """
 
     # Immovlan listings URL
-    LISTINGS_URL = "https://immovlan.be/en/real-estate?transactiontypes=for-sale&propertytypes=house,apartment&sortdirection=ascending&sortby=zipcode&page={}"
+    LISTINGS_URL = "https://immovlan.be/en/real-estate?transactiontypes=for-sale&propertytypes=house,apartment&sortdirection=ascending&sortby=zipcode&towns={}&page={}"
     URLS_PER_PAGE = 20    
 
     # Listing fields
@@ -111,7 +111,7 @@ class Scraper:
             start_from_url (str, optional): URL from which to resume scraping. Defaults to "".
         """
         listing_urls = self.__get_listing_urls(urls_txt_file, max_urls)
-
+        
         start_from = 0
         if start_from_url != "":
             try:
@@ -177,54 +177,42 @@ class Scraper:
             seen = set()
             pages = max_urls // self.URLS_PER_PAGE
 
-            for page in range(pages):
-                listings_page_url = self.LISTINGS_URL.format(page + 1)
-                print(f">> Getting listings URLs from page # {page + 1} => {listings_page_url}")
+            with open(urls_txt_file, 'w', buffering = 1) as urls_file:
+                postal_codes = [f"{i:04d}" for i in range(1000, 9993)]
 
-                response = requests.get(
-                    listings_page_url,
-                    headers = self.__get_headers()
-                )
-                response.raise_for_status()
+                for postal_code in postal_codes:
+                    for page in range(pages):
+                        listings_page_url = self.LISTINGS_URL.format(postal_code, page + 1)
+                        print(f">> Getting listings URLs from page # {page + 1} => {listings_page_url}")
 
-                soup = BeautifulSoup(response.content, 'html.parser')
-                articles = soup.find_all("article")
+                        response = requests.get(
+                            listings_page_url,
+                            headers = self.__get_headers()
+                        )
+                        response.raise_for_status()
 
-                unique_urls_count = 0
+                        soup = BeautifulSoup(response.content, 'html.parser')
+                        articles = soup.find_all("article")
 
-                for article in articles:
-                    if article.has_attr("data-url"):
-                        url = article["data-url"]
-                        if url not in seen:
-                            seen.add(url)
-                            listing_urls.append(url)
-                            unique_urls_count += 1
+                        unique_urls_count = 0
 
-                print(f"Found {unique_urls_count} unique URLs")
-                if unique_urls_count == 0:
-                    break
+                        for article in articles:
+                            if article.has_attr("data-url"):
+                                url = str(article["data-url"])
+                                if url not in seen:
+                                    seen.add(url)
+                                    listing_urls.append(url)
+                                    urls_file.write(url + '\n')
+                                    unique_urls_count += 1
 
-                # Add a delay to avoid blocking
-                time.sleep(randint(0, 1))
-            
-            if listing_urls:
-                self.__save_urls_to_file(listing_urls, urls_txt_file)
+                        print(f"Found {unique_urls_count} unique URLs")
+                        if unique_urls_count == 0:
+                            break
 
+                        # Add a delay to avoid blocking
+                        time.sleep(randint(0, 1))
+                    
         return listing_urls[:max_urls]
-
-    def __save_urls_to_file(self, urls: list[str], filename: str) -> None:
-        """
-        Save listing URLs to a file.
-
-        Args:
-            urls (list[str]): List of URLs to save.
-            filename (str): File path where URLs will be written.
-        """
-        try:
-            with open(filename, 'w') as urls_file:
-                urls_file.writelines(url + '\n' for url in urls)
-        except Exception as e:
-            print(f"[ERROR] Failed to save URLs to file: {filename} => {e}")
 
     def __load_urls_from_file(self, filename: str) -> list[str]:
         """
