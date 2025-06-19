@@ -131,9 +131,11 @@ class Scraper:
             if start_from == 0:
                 writer.writeheader()
 
-            for listing_url in listing_urls[start_from:]: 
-                listing_data = self.__get_listing_data(listing_url.strip())
+            for index, listing_url in enumerate(listing_urls[start_from:]): 
+                print(f">>>> Processing listing {start_from + index + 1} out of {len(listing_urls)}")
 
+                listing_data = self.__get_listing_data(listing_url.strip())
+                
                 if (len(listing_data) > 0 
                     and listing_data[self.FIELD_PRICE]
                     and listing_data[self.FIELD_BEDROOMS]
@@ -262,7 +264,7 @@ class Scraper:
             listing_type = self.__parse_listing_type(soup)
 
             if not listing_type or listing_type == "Project":
-                print(f"Skipping property because of type: {listing_type}")
+                print(f"Skipping listing because type = {listing_type}")
             else:
                 listing_data[self.FIELD_TYPE] = listing_type
                 listing_data.update(self.__parse_data_rows(soup))
