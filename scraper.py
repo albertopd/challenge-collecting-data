@@ -285,7 +285,7 @@ class Scraper:
             title = soup.find(class_ = "detail__header_title_main")
 
             if title:
-                return title.text.strip().split(' ')[0].replace(':', '')
+                return title.text.strip().split(' ')[0].replace(':', '').replace("Master", "House").replace("Residence", "House")
 
         except Exception as e:
             print(f"[ERROR] Failed to parse: {self.FIELD_TYPE} => {e}")

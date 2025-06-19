@@ -5,7 +5,7 @@ try:
     scraper = Scraper()
 
     with keep.running():
-        scraper.scrape_data("listings_data.csv", "listings_urls.txt", 36000)
-    
+        scraper.scrape_data("listings_data.csv", "listings_urls.txt", 20000)
+
 except Exception as ex:
     print(f"Oops! Something went wrong! => {ex}")
