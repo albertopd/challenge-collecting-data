@@ -7,6 +7,19 @@ from random import randint
 from pathlib import Path
 from bs4 import BeautifulSoup
 from fake_headers import Headers
+from rich.console import Console
+from rich.style import Style
+from rich.theme import Theme
+from rich.progress import (
+    Progress,
+    TextColumn,
+    SpinnerColumn,
+    BarColumn,
+    TaskProgressColumn,
+    TimeRemainingColumn,
+    MofNCompleteColumn,
+    TimeElapsedColumn
+)
 
 class Scraper:
     """
@@ -99,6 +112,10 @@ class Scraper:
         Initialize the Scraper instance with an empty data list.
         """
         self.data: list[dict] = []
+        self.console = Console(theme = Theme({
+            "warning": "yellow",
+            "error": "bold red"
+        }))
 
     def scrape_data(self, output_csv_file: str, urls_txt_file: str, max_urls: int, start_from_url: str = "") -> None:
         """
@@ -131,21 +148,38 @@ class Scraper:
             if start_from == 0:
                 writer.writeheader()
 
-            for index, listing_url in enumerate(listing_urls[start_from:]): 
-                print(f">>>> Processing listing {start_from + index + 1} out of {len(listing_urls)}")
+            progress = Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                MofNCompleteColumn(),
+                BarColumn(),
+                TaskProgressColumn(),
+                TimeElapsedColumn(),
+                TimeRemainingColumn(),
+                console = self.console
+            )
+            task = progress.add_task("Listing:", total = len(listing_urls[start_from:]))
 
-                listing_data = self.__get_listing_data(listing_url.strip())
-                
-                if (len(listing_data) > 0 
-                    and listing_data[self.FIELD_PRICE]
-                    and listing_data[self.FIELD_BEDROOMS]
-                    and listing_data[self.FIELD_LIVING_AREA]
-                ):
-                    self.data.append(listing_data)
-                    writer.writerow(listing_data)
+            with progress:
+                for listing_url in listing_urls[start_from:]:
+                    self.console.print(f"Scraping listing: {listing_url}")
+                    
+                    listing_data = self.__get_listing_data(listing_url)
+                    
+                    if not listing_data[self.FIELD_PRICE]:
+                        self.console.print(f"[warning]Skipping listing because is missing {self.FIELD_PRICE}[/warning]")
+                    elif not listing_data[self.FIELD_BEDROOMS]:
+                        self.console.print(f"[warning]Skipping listing because is missing {self.FIELD_BEDROOMS}[/warning]")
+                    elif not listing_data[self.FIELD_LIVING_AREA]:
+                        self.console.print(f"[warning]Skipping listing because is missing {self.FIELD_LIVING_AREA}[/warning]")
+                    else:
+                        self.data.append(listing_data)
+                        writer.writerow(listing_data)
 
-                # Add a delay to avoid blocking
-                time.sleep(randint(0, 1))
+                    progress.advance(task)
+                    
+                    # Add a delay to avoid blocking
+                    time.sleep(randint(0, 1))
 
     def __get_headers(self) -> dict:
         """
@@ -248,11 +282,9 @@ class Scraper:
         Returns:
             dict: Parsed data fields for the listing.
         """
-        listing_data: dict = {}
+        listing_data: dict = {key: None for key in self.FIELD_NAMES}
 
         try:
-            print(f">>>> Scraping listing data from page => {listing_url}")
-
             response = requests.get(
                 listing_url,
                 headers = self.__get_headers()
@@ -264,7 +296,7 @@ class Scraper:
             listing_type = self.__parse_listing_type(soup)
 
             if not listing_type or listing_type == "Project":
-                print(f"Skipping listing because type = {listing_type}")
+                self.console.print(f"[warning]Skipping listing because of invalid Property Type[/warning]")
             else:
                 listing_data[self.FIELD_TYPE] = listing_type
                 listing_data.update(self.__parse_data_rows(soup))
@@ -273,7 +305,7 @@ class Scraper:
                 listing_data[self.FIELD_URL] = listing_url
         
         except Exception as e:
-            print(f"[ERROR] Failed to parse listing data from page: {listing_url} => {e}")
+            self.console.print(f"[error]Failed to parse listing data: {e}[/error]")
             
         return listing_data
 
@@ -294,7 +326,7 @@ class Scraper:
                 return title.text.strip().split(' ')[0].replace(':', '').replace("Master", "House").replace("Residence", "House")
 
         except Exception as e:
-            print(f"[ERROR] Failed to parse: {self.FIELD_TYPE} => {e}")
+            self.console.print(f"[error]Failed to parse {self.FIELD_TYPE}: {e}[/error]")
 
         return ""
     
@@ -340,156 +372,133 @@ class Scraper:
                             try:
                                 listing_data[self.FIELD_LIVING_AREA] = int(self.REGEX_REMOVE_NON_NUMERIC.sub('', data_value_text))
                             except Exception as ie:
-                                listing_data[self.FIELD_LIVING_AREA] = None
-                                print(f"[ERROR] Failed to parse: {self.FIELD_LIVING_AREA} => {ie}")
+                                self.console.print(f"[error]Failed to parse {self.FIELD_LIVING_AREA}: {ie}[/error]")
                         case "Number of bedrooms":
                             try:
                                 listing_data[self.FIELD_BEDROOMS] = int(self.REGEX_REMOVE_NON_NUMERIC.sub('', data_value_text))
                             except Exception as ie:
-                                listing_data[self.FIELD_BEDROOMS] = None
-                                print(f"[ERROR] Failed to parse: {self.FIELD_BEDROOMS} => {ie}")
+                                self.console.print(f"[error]Failed to parse {self.FIELD_BEDROOMS}: {ie}[/error]")
                         case "Number of bathrooms":
                             try:
                                 bathrooms = int(self.REGEX_REMOVE_NON_NUMERIC.sub('', data_value_text))
                             except Exception as ie:
-                                print(f"[ERROR] Failed to parse: {self.FIELD_BATHROOMS} => {ie}")
+                                self.console.print(f"[error]Failed to parse {self.FIELD_BATHROOMS}: {ie}[/error]")
                         case "Number of toilets":
                             try:
                                 toilets = int(self.REGEX_REMOVE_NON_NUMERIC.sub('', data_value_text))
                             except Exception as ie:
-                                print(f"[ERROR] Failed to parse: Number of toilets => {ie}")
+                                self.console.print(f"[error]Failed to parse Number of toilets: {ie}[/error]")
                         case "Number of showers":
                             try:
                                 showers = int(self.REGEX_REMOVE_NON_NUMERIC.sub('', data_value_text))
                             except Exception as ie:
-                                print(f"[ERROR] Failed to parse: Number of showers => {ie}")
+                                self.console.print(f"[error]Failed to parse Number of shower: {ie}[/error]")
                         case "Build Year":
                             try:
                                 listing_data[self.FIELD_CONSTRUCTION_YEAR] = int(self.REGEX_REMOVE_NON_NUMERIC.sub('', data_value_text))
                             except Exception as ie:
-                                listing_data[self.FIELD_CONSTRUCTION_YEAR] = None
-                                print(f"[ERROR] Failed to parse: {self.FIELD_CONSTRUCTION_YEAR} => {ie}")
+                                self.console.print(f"[error]Failed to parse {self.FIELD_CONSTRUCTION_YEAR}: {ie}[/error]")
                         case "Furnished":
                             try:
                                 listing_data[self.FIELD_FURNISHED] = int(data_value_text == "Yes")
                             except Exception as ie:
-                                listing_data[self.FIELD_FURNISHED] = None
-                                print(f"[ERROR] Failed to parse: {self.FIELD_FURNISHED} => {ie}") 
+                                self.console.print(f"[error]Failed to parse {self.FIELD_FURNISHED}: {ie}[/error]")
                         case "Number of facades":
                             try:
                                 listing_data[self.FIELD_FACADES] = int(self.REGEX_REMOVE_NON_NUMERIC.sub('', data_value_text))
                             except Exception as ie:
-                                listing_data[self.FIELD_FACADES] = None
-                                print(f"[ERROR] Failed to parse: {self.FIELD_FACADES} => {ie}")
+                                self.console.print(f"[error]Failed to parse {self.FIELD_FACADES}: {ie}[/error]")
                         case "Number of floors":
                             try:
                                 listing_data[self.FIELD_FLOORS] = int(self.REGEX_REMOVE_NON_NUMERIC.sub('', data_value_text))
                             except Exception as ie:
-                                listing_data[self.FIELD_FLOORS] = None
-                                print(f"[ERROR] Failed to parse: {self.FIELD_FLOORS} => {ie}")
+                                self.console.print(f"[error]Failed to parse {self.FIELD_FLOORS}: {ie}[/error]")
                         case "Specific primary energy consumption":
                             try:
                                 listing_data[self.FIELD_EPB] = int(self.REGEX_REMOVE_NON_NUMERIC.sub('', data_value_text))
                                 listing_data[self.FIELD_ENERGY_CLASS] = self.__get_epb_class(listing_data[self.FIELD_EPB])
                             except Exception as ie:
-                                listing_data[self.FIELD_EPB] = None
-                                print(f"[ERROR] Failed to parse: {self.FIELD_EPB} => {ie}")
+                                self.console.print(f"[error]Failed to parse {self.FIELD_EPB}: {ie}[/error]")
                         case "Kitchen equipment":
                             try:
                                 listing_data[self.FIELD_FULL_KITCHEN] = int(data_value_text != "")
                             except Exception as ie:
-                                listing_data[self.FIELD_FULL_KITCHEN] = None
-                                print(f"[ERROR] Failed to parse: {self.FIELD_FULL_KITCHEN} => {ie}")
+                                self.console.print(f"[error]Failed to parse {self.FIELD_FULL_KITCHEN}: {ie}[/error]")
                         case "Terrace":
                             try:
                                 listing_data[self.FIELD_TERRACE] = int(data_value_text == "Yes")
                             except Exception as ie:
-                                listing_data[self.FIELD_TERRACE] = None
-                                print(f"[ERROR] Failed to parse: {self.FIELD_TERRACE} => {ie}")
+                                self.console.print(f"[error]Failed to parse {self.FIELD_TERRACE}: {ie}[/error]")
                         case "Surface terrace":
                             try:
                                 listing_data[self.FIELD_TERRACE_AREA] = int(self.REGEX_REMOVE_NON_NUMERIC.sub('', data_value_text))
                             except Exception as ie:
-                                listing_data[self.FIELD_TERRACE_AREA] = None
-                                print(f"[ERROR] Failed to parse: {self.FIELD_TERRACE_AREA} => {ie}")
+                                self.console.print(f"[error]Failed to parse {self.FIELD_TERRACE_AREA}: {ie}[/error]")
                         case "Garden":
                             try:
                                 listing_data[self.FIELD_GARDEN] = int(data_value_text == "Yes")
                             except Exception as ie:
-                                listing_data[self.FIELD_GARDEN] = None
-                                print(f"[ERROR] Failed to parse: {self.FIELD_GARDEN} => {ie}")
+                                self.console.print(f"[error]Failed to parse {self.FIELD_GARDEN}: {ie}[/error]")
                         case "Surface garden":
                             try:
                                 listing_data[self.FIELD_GARDEN_AREA] = int(self.REGEX_REMOVE_NON_NUMERIC.sub('', data_value_text))
                             except Exception as ie:
-                                listing_data[self.FIELD_GARDEN_AREA] = None
-                                print(f"[ERROR] Failed to parse: {self.FIELD_GARDEN_AREA} => {ie}")
+                                self.console.print(f"[error]Failed to parse {self.FIELD_GARDEN_AREA}: {ie}[/error]")
                         case "Swimming pool":
                             try:
                                 listing_data[self.FIELD_SWIMMING_POOL] = int(data_value_text == "Yes")
                             except Exception as ie:
-                                listing_data[self.FIELD_SWIMMING_POOL] = None
-                                print(f"[ERROR] Failed to parse: {self.FIELD_SWIMMING_POOL} => {ie}")
+                                self.console.print(f"[error]Failed to parse {self.FIELD_SWIMMING_POOL}: {ie}[/error]")
                         case "Garage":
                             try:
                                 listing_data[self.FIELD_GARAGE] = int(data_value_text == "Yes")
                             except Exception as ie:
-                                listing_data[self.FIELD_GARAGE] = None
-                                print(f"[ERROR] Failed to parse: {self.FIELD_GARAGE} => {ie}")
+                                self.console.print(f"[error]Failed to parse {self.FIELD_GARAGE}: {ie}[/error]")
                         case "Bike storage":
                             try:
                                 listing_data[self.FIELD_BIKE_STORAGE] = int(data_value_text == "Yes")
                             except Exception as ie:
-                                listing_data[self.FIELD_BIKE_STORAGE] = None
-                                print(f"[ERROR] Failed to parse: {self.FIELD_BIKE_STORAGE} => {ie}")
+                                self.console.print(f"[error]Failed to parse {self.FIELD_BIKE_STORAGE}: {ie}[/error]")
                         case "Balcony":
                             try:
                                 listing_data[self.FIELD_BALCONY] = int(data_value_text == "Yes")
                             except Exception as ie:
-                                listing_data[self.FIELD_BALCONY] = None
-                                print(f"[ERROR] Failed to parse: {self.FIELD_BALCONY} => {ie}")
+                                self.console.print(f"[error]Failed to parse {self.FIELD_BALCONY}: {ie}[/error]")
                         case "Cellar":
                             try:
                                 listing_data[self.FIELD_CELLAR] = int(data_value_text == "Yes")
                             except Exception as ie:
-                                listing_data[self.FIELD_CELLAR] = None
-                                print(f"[ERROR] Failed to parse: {self.FIELD_CELLAR} => {ie}")
+                                self.console.print(f"[error]Failed to parse {self.FIELD_CELLAR}: {ie}[/error]")
                         case "Attic":
                             try:
                                 listing_data[self.FIELD_ATTIC] = int(data_value_text == "Yes")
                             except Exception as ie:
-                                listing_data[self.FIELD_ATTIC] = None
-                                print(f"[ERROR] Failed to parse: {self.FIELD_ATTIC} => {ie}")
+                                self.console.print(f"[error]Failed to parse {self.FIELD_ATTIC}: {ie}[/error]")
                         case "Floor of appartment":
                             try:
                                 listing_data[self.FIELD_FLOOR_NUMBER] = int(self.REGEX_REMOVE_NON_NUMERIC.sub('', data_value_text))
                             except Exception as ie:
-                                listing_data[self.FIELD_FLOOR_NUMBER] = None
-                                print(f"[ERROR] Failed to parse: {self.FIELD_FLOOR_NUMBER} => {ie}")
+                                self.console.print(f"[error]Failed to parse {self.FIELD_FLOOR_NUMBER}: {ie}[/error]")
                         case "Elevator":
                             try:
                                 listing_data[self.FIELD_ELEVATOR] = int(data_value_text == "Yes")
                             except Exception as ie:
-                                listing_data[self.FIELD_ELEVATOR] = None
-                                print(f"[ERROR] Failed to parse: {self.FIELD_ELEVATOR} => {ie}")
+                                self.console.print(f"[error]Failed to parse {self.FIELD_ELEVATOR}: {ie}[/error]")
                         case "Air conditioning":
                             try:
                                 listing_data[self.FIELD_AC] = int(data_value_text == "Yes")
                             except Exception as ie:
-                                listing_data[self.FIELD_AC] = None
-                                print(f"[ERROR] Failed to parse: {self.FIELD_AC} => {ie}")
+                                self.console.print(f"[error]Failed to parse {self.FIELD_AC}: {ie}[/error]")
                         case "Alarm":
                             try:
                                 listing_data[self.FIELD_ALARM] = int(data_value_text == "Yes")
                             except Exception as ie:
-                                listing_data[self.FIELD_ALARM] = None
-                                print(f"[ERROR] Failed to parse: {self.FIELD_ALARM} => {ie}")
+                                self.console.print(f"[error]Failed to parse {self.FIELD_ALARM}: {ie}[/error]")
                         case "Access for disabled":
                             try:
                                 listing_data[self.FIELD_ACCESS_DISABLED] = int(data_value_text == "Yes")
                             except Exception as ie:
-                                listing_data[self.FIELD_ACCESS_DISABLED] = None
-                                print(f"[ERROR] Failed to parse: {self.FIELD_ACCESS_DISABLED} => {ie}")
+                                self.console.print(f"[error]Failed to parse {self.FIELD_ACCESS_DISABLED}: {ie}[/error]")
                         case "Type of heating":
                             listing_data[self.FIELD_HEATING_TYPE] = data_value_text if data_value_text != "Not specified" else None
 
@@ -524,7 +533,7 @@ class Scraper:
             else:
                 return {}
         except Exception as e:
-            print(f"[ERROR] Failed to parse: {self.FIELD_POSTAL_CODE}, {self.FIELD_LOCALITY} => {e}")
+            self.console.print(f"[error]Failed to parse {self.FIELD_POSTAL_CODE}, {self.FIELD_LOCALITY}: {e}[/error]")
             return {}
 
     def __parse_pricing(self, soup) -> int | None:
@@ -542,7 +551,7 @@ class Scraper:
             price_text = self.REGEX_REMOVE_NON_NUMERIC.sub('', price_tag.text)
             return int(price_text)
         except Exception as e:
-            print(f"[ERROR] Failed to parse: {self.FIELD_PRICE} => {e}")
+            self.console.print(f"[error]Failed to parse {self.FIELD_PRICE}: {e}[/error]")
             return None
         
     def __get_epb_class(self, epb: int) -> str:
