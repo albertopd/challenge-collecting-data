@@ -134,7 +134,11 @@ class Scraper:
             for listing_url in listing_urls[start_from:]: 
                 listing_data = self.__get_listing_data(listing_url.strip())
 
-                if len(listing_data) > 0:
+                if (len(listing_data) > 0 
+                    and listing_data[self.FIELD_PRICE]
+                    and listing_data[self.FIELD_BEDROOMS]
+                    and listing_data[self.FIELD_LIVING_AREA]
+                ):
                     self.data.append(listing_data)
                     writer.writerow(listing_data)
 
